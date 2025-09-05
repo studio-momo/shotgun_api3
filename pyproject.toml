@@ -48,7 +48,7 @@ zip-safe = false
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-"shotgun_api3.lib" = ["*.txt", "*.md"]
+"shotgun_api3.lib" = ["*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
