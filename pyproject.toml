@@ -41,9 +41,11 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["shotgun_api3"]
 include-package-data = true
 zip-safe = false
+
+[tool.setuptools.packages.find]
+exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 "shotgun_api3.lib" = ["*.txt", "*.md"]
