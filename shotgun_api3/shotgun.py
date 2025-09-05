@@ -45,6 +45,7 @@ import stat  # used for attachment upload
 import sys
 import time
 import json
+from typing import Union
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -2999,8 +3000,8 @@ class Shotgun(object):
         This is used internally for downloading attachments from FPTR.
         """
         sid = self.get_session_token()
-        cj = http_cookiejar.LWPCookieJar()
-        c = http_cookiejar.Cookie(
+        cj = http.cookiejar.LWPCookieJar()
+        c = http.cookiejar.Cookie(
             "0",
             "_session_id",
             sid,
@@ -3568,7 +3569,7 @@ class Shotgun(object):
         return self._call_rpc("user_subscriptions_read", None)
 
     def user_subscriptions_create(self, users):
-        # type: (list[dict[str, Union[str, list[str], None]) -> bool
+        # type: (list[dict[str, Union[str, list[str], None]]]) -> bool
         """
         Assign subscriptions to users.
 
@@ -3888,7 +3889,7 @@ class Shotgun(object):
                 # otherwise and will not re-attempt.
                 # When we drop support of Python 2 and we will probably drop the
                 # next except, we might want to remove this except too.
-            except ssl_error_classes as e:
+            except requests.exceptions.SSLError as e:
                 # Test whether the exception is due to the fact that this is an older version of
                 # Python that cannot validate certificates encrypted with SHA-2. If it is, then
                 # fall back on disabling the certificate validation and try again - unless the
