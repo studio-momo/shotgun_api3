@@ -46,7 +46,7 @@ include-package-data = true
 zip-safe = false
 
 [tool.setuptools.package-data]
-"*" = ["cacerts.txt", "cacert.pem"]
+"shotgun_api3.lib" = ["*.txt", "*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
