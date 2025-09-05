@@ -3613,16 +3613,14 @@ class Shotgun(object):
 
         Auth and CRUD operations
         ========================
-        These operations are executed with httplib2. httplib2 ships with a
-        list of CACs instead of asking Python's ssl module for them.
+        These operations are executed with requests. requests uses the system
+        certifi package for certificate validation.
 
         Upload/Downloads
         ================
         These operations are executed using urllib2. urllib2 asks a Python
-        module called `ssl` for CACs. We have bundled certifi with the API
-        so that we can be sure the certs are correct at the time of the API
-        release. This does however mean when the certs change we must update
-        the API to contain the latest certifi.
+        module called `ssl` for CACs. We use the system certifi package
+        to ensure we have up-to-date certificates.
         This approach is preferable to not using certifi since, on Windows,
         ssl searches for CACs in the Windows Certificate Store, on
         Linux/macOS, it asks the OpenSSL library linked with Python for CACs.
@@ -3650,19 +3648,9 @@ class Shotgun(object):
             return os.environ.get("SHOTGUN_API_CACERTS")
         else:
             # No certs have been specifically provided fallback to using the
-            # certs shipped with this API.
-            # We bundle certifi with this API so that we have a higher chance
-            # of using an uptodate certificate, rather than relying
-            # on the certs that are bundled with Python or the OS in some cases.
-            # However we can't use certifi.where() since that searches for the
-            # cacert.pem file using the sys.path and this means that if another
-            # copy of certifi can be found first, then it won't use ours.
-            # So we manually generate the path to the cert, but still use certifi
-            # to make it easier for updating the bundled cert with the API.
-            cur_dir = os.path.dirname(os.path.abspath(__file__))
-            # Now add the rest of the path to the cert file.
-            cert_file = os.path.join(cur_dir, "lib", "certifi", "cacert.pem")
-            return cert_file
+            # system certifi package which is maintained and up-to-date.
+            import certifi
+            return certifi.where()
 
     def _turn_off_ssl_validation(self):
         """

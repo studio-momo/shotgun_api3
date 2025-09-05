@@ -16,8 +16,9 @@ import datetime
 import os
 import re
 
-from shotgun_api3.lib.six.moves import urllib
-from shotgun_api3.lib import six, sgutils
+import urllib.parse
+import urllib.request
+from shotgun_api3.lib import sgutils
 
 try:
     import simplejson as json
@@ -33,15 +34,12 @@ import time
 import unittest
 from . import mock
 
-import shotgun_api3.lib.httplib2 as httplib2
+# httplib2 removed - using requests now
 import shotgun_api3 as api
 from shotgun_api3.shotgun import ServerCapabilities, SG_TIMEZONE
 from . import base
 
-if six.PY3:
-    from base64 import encodebytes as base64encode
-else:
-    from base64 import encodestring as base64encode
+from base64 import encodebytes as base64encode
 
 
 def b64encode(val):
@@ -661,10 +659,7 @@ class TestShotgunClient(base.MockTestBase):
             connect=False,
         )
 
-        if six.PY3:
-            j = json.dumps(d, ensure_ascii=ensure_ascii)
-        else:
-            j = json.dumps(d, ensure_ascii=ensure_ascii, encoding="utf-8")
+        j = json.dumps(d, ensure_ascii=ensure_ascii)
         self.assertEqual(d, sg._decode_response(headers, j))
 
         headers["content-type"] = "text/javascript"

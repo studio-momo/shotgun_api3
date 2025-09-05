@@ -16,8 +16,10 @@ from unittest import mock
 from .mock import patch
 import shotgun_api3 as api
 from shotgun_api3.shotgun import _is_mimetypes_broken
-from shotgun_api3.lib.six.moves import range, urllib
-from shotgun_api3.lib.httplib2 import Http, ssl_error_classes
+import urllib.parse
+import urllib.request
+import requests
+import ssl
 
 
 class TestShotgunInit(unittest.TestCase):
@@ -728,13 +730,15 @@ class TestCerts(unittest.TestCase):
         # Get the location of the certs file
         self.certs = self.sg._get_certs_file(None)
 
-    def _check_url_with_sg_api_httplib2(self, url, certs):
+    def _check_url_with_sg_api_requests(self, url, certs):
         """
         Given a url and the certs file, it will do a simple
         request and return the result.
         """
-        http = Http(ca_certs=certs)
-        return http.request(url)
+        session = requests.Session()
+        if certs:
+            session.verify = certs
+        return session.get(url)
 
     def _check_url_with_urllib(self, url):
         """
@@ -750,18 +754,13 @@ class TestCerts(unittest.TestCase):
         """
         Checks that the cert file the API is finding,
         (when a cert path isn't passed and the SHOTGUN_API_CACERTS
-        isn't set), is the one bundled with this API
+        isn't set), is the system certifi package
         """
-        # Get the path to the cert file we expect the Shotgun API to find
-        cert_path = os.path.normpath(
-            # Get the path relative to where we picked up the API and not relative
-            # to file on disk. On CI we pip install the API to run the tests
-            # so we have to pick the location from the installed copy.
-            # Call dirname to remove from __init__.py
-            os.path.join(os.path.dirname(api.__file__), "lib", "certifi", "cacert.pem")
-        )
+        # Now we use system certifi, so verify it's using the right path
+        import certifi
+        expected_cert_path = certifi.where()
         # Now ensure that the path the PTR API has found is correct.
-        self.assertEqual(cert_path, self.certs)
+        self.assertEqual(expected_cert_path, self.certs)
         self.assertTrue(os.path.isfile(self.certs))
 
     def test_httplib(self):
@@ -771,16 +770,16 @@ class TestCerts(unittest.TestCase):
         """
         # First check that we get an error when trying to connect to a known dummy bad URL
         self.assertRaises(
-            ssl_error_classes,
-            self._check_url_with_sg_api_httplib2,
+            requests.exceptions.SSLError,
+            self._check_url_with_sg_api_requests,
             self.bad_url,
             self.certs,
         )
 
         # Now check that the good urls connect properly using the certs
         for url in self.test_urls:
-            response, message = self._check_url_with_sg_api_httplib2(url, self.certs)
-            self.assertEqual(response["status"], "200")
+            response = self._check_url_with_sg_api_requests(url, self.certs)
+            self.assertEqual(response.status_code, 200)
 
     def test_urlib(self):
         """

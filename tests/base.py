@@ -12,9 +12,10 @@ from . import mock
 import shotgun_api3 as api
 from shotgun_api3.shotgun import json
 from shotgun_api3.shotgun import ServerCapabilities
-from shotgun_api3.lib import six
-from shotgun_api3.lib.six.moves import urllib
-from shotgun_api3.lib.six.moves.configparser import ConfigParser
+import urllib.parse
+import urllib.request
+import urllib.error
+from configparser import ConfigParser
 
 try:
     # Attempt to import skip from unittest.  Since this was added in Python 2.7
@@ -188,13 +189,10 @@ class MockTestBase(TestBase):
             return
 
         if not isinstance(data, str):
-            if six.PY2:
-                data = json.dumps(data, ensure_ascii=False, encoding="utf-8")
-            else:
-                data = json.dumps(
-                    data,
-                    ensure_ascii=False,
-                )
+            data = json.dumps(
+                data,
+                ensure_ascii=False,
+            )
 
         resp_headers = {
             "cache-control": "no-cache",
