@@ -1,0 +1,1 @@
+shotgun-api3@ git+https://github.com/studio-momo/shotgun_api3.git@13ceb52
