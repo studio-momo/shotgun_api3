@@ -1,7 +1,0 @@
-pyproject.toml
-test_import.py
-shotgun_api3_example.egg-info/PKG-INFO
-shotgun_api3_example.egg-info/SOURCES.txt
-shotgun_api3_example.egg-info/dependency_links.txt
-shotgun_api3_example.egg-info/requires.txt
-shotgun_api3_example.egg-info/top_level.txt

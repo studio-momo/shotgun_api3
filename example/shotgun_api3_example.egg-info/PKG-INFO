@@ -1,6 +1,0 @@
-Metadata-Version: 2.4
-Name: shotgun-api3-example
-Version: 0.1.0
-Summary: Example project to test shotgun_api3 git installation
-Requires-Python: >=3.8
-Requires-Dist: shotgun-api3@ git+https://github.com/studio-momo/shotgun_api3.git@13ceb52
