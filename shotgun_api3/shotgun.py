@@ -29,14 +29,11 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-# Python 2/3 compatibility
-from .lib import six
-from .lib import sgsix
+# Modern Python 3.8+ imports
 from .lib import sgutils
-from .lib.six import BytesIO  # used for attachment upload
-from .lib.six.moves import map
-
-from .lib.six.moves import http_cookiejar  # used for attachment upload
+import io
+from io import BytesIO  # used for attachment upload
+import http.cookiejar  # used for attachment upload
 import datetime
 import logging
 import uuid  # used for attachment upload
@@ -48,20 +45,22 @@ import stat  # used for attachment upload
 import sys
 import time
 import json
-from .lib.six.moves import urllib
+import urllib.parse
+import urllib.request
+import urllib.error
 import shutil  # used for attachment download
-from .lib.six.moves import http_client  # Used for secure file upload.
-from .lib.httplib2 import Http, ProxyInfo, socks, ssl_error_classes
+import http.client  # Used for secure file upload
+import requests
+from requests.adapters import HTTPAdapter
+from requests.auth import HTTPBasicAuth
+from urllib3.util.retry import Retry
 from .lib.sgtimezone import SgTimezone
 
 # Import Error and ResponseError (even though they're unused in this file) since they need
 # to be exposed as part of the API.
-from .lib.six.moves.xmlrpc_client import Error, ProtocolError, ResponseError  # noqa
+from xmlrpc.client import Error, ProtocolError, ResponseError  # noqa
 
-if six.PY3:
-    from base64 import encodebytes as base64encode
-else:
-    from base64 import encodestring as base64encode
+from base64 import encodebytes as base64encode
 
 
 LOG = logging.getLogger("shotgun_api3")
@@ -786,7 +785,7 @@ class Shotgun(object):
         In python 3.8 `urllib.parse.splituser` was deprecated warning devs to
         use `urllib.parse.urlparse`.
         """
-        if six.PY38:
+        if sys.version_info >= (3, 8):
             auth = None
             results = urllib.parse.urlparse(base_url)
             server = results.hostname
@@ -2271,7 +2270,7 @@ class Shotgun(object):
             "field_name": field_name,
             "properties": [
                 {"property_name": k, "value": v}
-                for k, v in six.iteritems((properties or {}))
+                for k, v in (properties or {}).items()
             ],
         }
         params = self._add_project_param(params, project_entity)
@@ -3328,7 +3327,7 @@ class Shotgun(object):
             raise ValueError("entity_types parameter must be a dictionary")
 
         api_entity_types = {}
-        for entity_type, filter_list in six.iteritems(entity_types):
+        for entity_type, filter_list in entity_types.items():
 
             if isinstance(filter_list, (list, tuple)):
                 resolved_filters = _translate_filters(filter_list, filter_operator=None)
@@ -3961,11 +3960,11 @@ class Shotgun(object):
         LOG.debug("Request body is %s" % body)
 
         conn = self._get_connection()
-        resp, content = conn.request(url, method=verb, body=body, headers=headers)
+        resp = conn.request(verb, url, data=body, headers=headers, timeout=conn.timeout)
         # http response code is handled else where
-        http_status = (resp.status, resp.reason)
-        resp_headers = dict((k.lower(), v) for k, v in six.iteritems(resp))
-        resp_body = content
+        http_status = (resp.status_code, resp.reason)
+        resp_headers = dict((k.lower(), v) for k, v in resp.headers.items())
+        resp_body = resp.content
 
         LOG.debug("Response status is %s %s" % http_status)
         LOG.debug("Response headers are %s" % resp_headers)
@@ -4044,7 +4043,7 @@ class Shotgun(object):
 
         def _decode_dict(dct):
             newdict = {}
-            for k, v in six.iteritems(dct):
+            for k, v in dct.items():
                 if isinstance(k, str):
                     k = sgutils.ensure_str(k)
                 if isinstance(v, str):
@@ -4118,7 +4117,7 @@ class Shotgun(object):
             return tuple(recursive(i, visitor) for i in data)
 
         if isinstance(data, dict):
-            return dict((k, recursive(v, visitor)) for k, v in six.iteritems(data))
+            return dict((k, recursive(v, visitor)) for k, v in data.items())
 
         return visitor(data)
 
@@ -4165,7 +4164,7 @@ class Shotgun(object):
                     value = _change_tz(value)
                 return value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            # ensure return is six.text_type
+            # ensure return is str
             if isinstance(value, str):
                 return sgutils.ensure_text(value)
 
@@ -4216,28 +4215,41 @@ class Shotgun(object):
         if self._connection is not None:
             return self._connection
 
+        # Create a requests session with retry strategy
+        session = requests.Session()
+        
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=0.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        
+        # Configure adapter with retries
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        
+        # Set timeout
+        session.timeout = self.config.timeout_secs
+        
+        # Configure proxy if needed
         if self.config.proxy_server:
-            pi = ProxyInfo(
-                socks.PROXY_TYPE_HTTP,
-                self.config.proxy_server,
-                self.config.proxy_port,
-                proxy_user=self.config.proxy_user,
-                proxy_pass=self.config.proxy_pass,
-            )
-            self._connection = Http(
-                timeout=self.config.timeout_secs,
-                ca_certs=self.__ca_certs,
-                proxy_info=pi,
-                disable_ssl_certificate_validation=self.config.no_ssl_validation,
-            )
-        else:
-            self._connection = Http(
-                timeout=self.config.timeout_secs,
-                ca_certs=self.__ca_certs,
-                proxy_info=None,
-                disable_ssl_certificate_validation=self.config.no_ssl_validation,
-            )
-
+            proxy_url = f"http://{self.config.proxy_server}:{self.config.proxy_port}"
+            if self.config.proxy_user and self.config.proxy_pass:
+                proxy_url = f"http://{self.config.proxy_user}:{self.config.proxy_pass}@{self.config.proxy_server}:{self.config.proxy_port}"
+            session.proxies = {
+                'http': proxy_url,
+                'https': proxy_url
+            }
+        
+        # Configure SSL verification
+        if self.config.no_ssl_validation:
+            session.verify = False
+        elif self.__ca_certs:
+            session.verify = self.__ca_certs
+            
+        self._connection = session
         return self._connection
 
     def _close_connection(self):
@@ -4247,12 +4259,10 @@ class Shotgun(object):
         if self._connection is None:
             return
 
-        for conn in self._connection.connections.values():
-            try:
-                conn.close()
-            except Exception:
-                pass
-        self._connection.connections.clear()
+        try:
+            self._connection.close()
+        except Exception:
+            pass
         self._connection = None
         return
 
@@ -4287,7 +4297,7 @@ class Shotgun(object):
                 continue
 
             # iterate over each item and check each field for possible injection
-            for k, v in six.iteritems(rec):
+            for k, v in rec.items():
                 if not v:
                     continue
 
@@ -4375,7 +4385,7 @@ class Shotgun(object):
         [{'field_name': 'foo', 'value': 'bar', 'thing1': 'value1'}]
         """
         ret = []
-        for k, v in six.iteritems((d or {})):
+        for k, v in (d or {}).items():
             d = {key_name: k, value_name: v}
             d.update((extra_data or {}).get(k, {}))
             ret.append(d)
@@ -4388,7 +4398,7 @@ class Shotgun(object):
 
         e.g. d {'foo' : 'bar'} changed to {'foo': {"value": 'bar'}]
         """
-        return dict([(k, {key_name: v}) for (k, v) in six.iteritems((d or {}))])
+        return dict([(k, {key_name: v}) for (k, v) in (d or {}).items()])
 
     def _upload_file_to_storage(self, path, storage_url):
         """
@@ -4661,13 +4671,13 @@ class Shotgun(object):
             raise ShotgunError("Max attemps limit reached.")
 
 
-class CACertsHTTPSConnection(http_client.HTTPConnection):
+class CACertsHTTPSConnection(http.client.HTTPConnection):
     """ "
     This class allows to create an HTTPS connection that uses the custom certificates
     passed in.
     """
 
-    default_port = http_client.HTTPS_PORT
+    default_port = http.client.HTTPS_PORT
 
     def __init__(self, *args, **kwargs):
         """
@@ -4683,17 +4693,12 @@ class CACertsHTTPSConnection(http_client.HTTPConnection):
         "Connect to a host on a given (SSL) port."
         super().connect(self)
         # Now that the regular HTTP socket has been created, wrap it with our SSL certs.
-        if six.PY38:
-            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            context.verify_mode = ssl.CERT_REQUIRED
-            context.check_hostname = False
-            if self.__ca_certs:
-                context.load_verify_locations(self.__ca_certs)
-            self.sock = context.wrap_socket(self.sock)
-        else:
-            self.sock = ssl.wrap_socket(
-                self.sock, ca_certs=self.__ca_certs, cert_reqs=ssl.CERT_REQUIRED
-            )
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.verify_mode = ssl.CERT_REQUIRED
+        context.check_hostname = False
+        if self.__ca_certs:
+            context.load_verify_locations(self.__ca_certs)
+        self.sock = context.wrap_socket(self.sock)
 
 
 class CACertsHTTPSHandler(urllib.request.HTTPHandler):
@@ -4723,16 +4728,13 @@ class FormPostHandler(urllib.request.BaseHandler):
 
     def http_request(self, request):
         # get_data was removed in 3.4. since we're testing against 3.6 and
-        # 3.7, this should be sufficient.
-        if six.PY3:
-            data = request.data
-        else:
-            data = request.get_data()
+        # Python 3.8+ only
+        data = request.data
         if data is not None and not isinstance(data, str):
             files = []
             params = []
             for key, value in data.items():
-                if isinstance(value, sgsix.file_types):
+                if isinstance(value, io.IOBase):
                     files.append((key, value))
                 else:
                     params.append((key, value))
@@ -4745,11 +4747,8 @@ class FormPostHandler(urllib.request.BaseHandler):
                 content_type = "multipart/form-data; boundary=%s" % boundary
                 request.add_unredirected_header("Content-Type", content_type)
             # add_data was removed in 3.4. since we're testing against 3.6 and
-            # 3.7, this should be sufficient.
-            if six.PY3:
-                request.data = data
-            else:
-                request.add_data(data)
+            # Python 3.8+ only
+            request.data = data
         return request
 
     def encode(self, params, files, boundary=None, buffer=None):
